@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <bytecodeTargetLevel>
+      <module name="kr.hs.dgsw.minisns.main" target="1.8" />
+      <module name="kr.hs.dgsw.minisns.test" target="1.8" />
+      <module name="kr.hs.dgsw.web_01_402.main" target="1.8" />
+      <module name="kr.hs.dgsw.web_01_402.test" target="1.8" />
+    </bytecodeTargetLevel>
+  </component>
+</project>

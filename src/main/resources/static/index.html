@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <script src="http://code.jquery.com/jquery-3.3.1.min.js"
+            integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
+</head>
+<body>
+<header style="display: flex; padding: 0 20px">
+    <h1>DGSW SNS</h1>
+    <button id="login-button" onclick="opneDialog(false)" style="margin-left: auto">로그인</button>
+</header>
+<hr>
+<div style="display: none;">
+    <div style="flex: .5;">
+    </div>
+    <div style="flex: .5;">
+        <input id=user-name-input" placeholder="이름">
+        <input id="user-email-input" placeholder="이메일">
+        <button id="addUser" onclick="addUser()">확인</button>
+
+    </div>
+</div>
+<div style="display: flex; margin-top: 20px;">
+    <div style="flex: .9; display: flex; justify-content: center; flex-direction: column; align-items: center">
+        <button onclick="opneDialog(true)" style="width: 500px; height: 100px;">글쓰기</button>
+        <div id="comment-list" style="flex: .5;"></div>
+    </div>
+    <div id="user-info" style="flex: .1;">
+        <img id="user-profile-image" src=""
+             style="max-height: 200px; max-width: 200px">
+        <div id="user-name">로그인 해주세요</div>
+        <div id="user-email"></div>
+        <div id="user-joined"></div>
+    </div>
+    <div id="user-list" style="flex: .5; display: none"></div>
+</div>
+
+<div id="login-container" style="display: none">
+    <div class="container">
+        <div style="text-align:center; background-color: white; padding: 0px 30px;">
+            <div style="margin: 30px 0px">로그인</div>
+            <div><input placeholder="사용자 아이디" id="login-user-id" value="banusa21"></div>
+            <div><input placeholder="패스워드" type="password" id="login-user-pw"></div>
+            <div style="margin: 30px 0px">
+                <button onclick="login()">확인</button>
+                <button onclick="closeDialog(false)">취소</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="comment-container" style="display: none">
+    <div class="container">
+        <div style="text-align:center; background-color: white; padding: 0px 30px;">
+            <div style="margin: 30px 0px">글쓰기</div>
+            <div><input id="upload-file-comment" type="file"></div>
+            <div><input placeholder="사진 설명" id="comment-content-input"></div>
+            <div style="margin: 30px 0px">
+                <button onclick="uploadfile(1,0)">확인</button>
+                <button onclick="closeDialog(true)">취소</button>
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+    .container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: fixed;
+        width: 100vw;
+        height: 100vh;
+        left: 0;
+        top: 0;
+        background-color: #000000aa
+    }
+
+    .comment-item {
+        display: flex;
+        border-bottom: 1px solid silver
+    }
+</style>
+<script>
+
+    let userID = null;
+
+    function opneDialog(isCommentContainer) {
+        isCommentContainer && userID !== null ? $(`#comment-container`).show(400) : $(`#login-container`).show(400);
+
+    }
+
+    function closeDialog(isCommentContainer) {
+        isCommentContainer ? $(`#comment-container`).hide(400) : $(`#login-container`).hide(400);
+    }
+
+    async function login() {
+        let json = {
+            email: $(`#login-user-id`).val().trim(),
+            password: $(`#login-user-pw`).val().trim()
+        };
+
+        let response = await $.ajax({
+            type: "POST",
+            url: "/login",
+            data: JSON.stringify(json),
+            contentType: "application/json",
+            dataType: "json"
+        });
+
+        userID = response.id;
+
+        $(`#user-profile-image`).attr(`src`, `${response.profileImagePath ? `/attachment/user/${userID}` : "http://pluspng.com/img-png/user-png-icon-male-user-icon-512.png"}`);
+        $(`#user-name`).html(response.userName);
+        $(`#user-email`).html(response.email);
+        $(`#user-joined`).html(response.joined);
+
+        closeDialog(false);
+        $(`#login-button`).text(`로그아웃`);
+        fetchCommentList();
+    }
+
+    async function uploadfile(uploadType, id) {
+        let fileInput;
+
+        switch (uploadType) {
+            case 0 :
+                fileInput = $(`#upload-file-${userID}`)[0].files[0];
+                break;
+            case 1 :
+                fileInput = $(`#upload-file-comment`)[0].files[0];
+                break;
+            case 2 :
+                fileInput = $(`#edit-comment-image-value`)[0].files[0];
+                break;
+
+        };
+
+        try {
+            let formData = new FormData();
+            formData.append("srcFile", fileInput);
+
+            let responseUploadFile = await $.ajax({
+                type: "POST",
+                url: "/attachment",
+                data: formData,
+                contentType: false,
+                processData: false
+            });
+
+            console.log(responseUploadFile);
+
+            switch (uploadType) {
+                case 0 :
+                    changUserProfileImage(responseUploadFile);
+                    break;
+                case 1 :
+                    postComment(responseUploadFile);
+                    break;
+                case 2 :
+                    updateComment(responseUploadFile, id);
+                    break;
+
+            }
+            ;
+        } catch (e) {
+            console.log(JSON.stringify(e))
+        }
+    }
+
+    async function changUserProfileImage(responseUploadFile) {
+
+        let json = {
+            profileImageName: responseUploadFile.originalName,
+            profileImagePath: responseUploadFile.storepath
+        };
+
+        let responseChangeUserProfileImage = await $.ajax({
+            type: "PUT",
+            url: `/update/user/${userID}`,
+            data: JSON.stringify(json),
+            contentType: 'application/json; charset=utf-8',
+        });
+
+        console.log(responseChangeUserProfileImage);
+
+    }
+
+    async function fetchCommentList() {
+        try {
+            $('#comment-list').html(
+                ""
+            );
+            let response = await $.get('list/comment');
+            for (let i = 0; i < response.length; i++) {
+                let comment = response[i];
+                $('#comment-list').prepend(
+                    getCommentDiv(comment)
+                );
+                if (comment.userID === userID) {
+                    $(`#comment-${comment.id}-update-delete-button`).append(
+                        getCommentUpdateDeleteButton(comment)
+                    );
+                }
+
+            }
+        } catch (e) {
+            $('#comment-list').html(JSON.stringify(e));
+        }
+    }
+
+    async function getUserList() {
+        try {
+            let response = await $.get('list/user');
+            console.log(response);
+            for (let i = 0; i < response.length; i++) {
+                let user = response[i];
+                $('#user-list').append(
+                    getUserDiv(user)
+                );
+            }
+        } catch (e) {
+            $('#user-list').html(JSON.stringify(e));
+        }
+    }
+
+    async function postComment(responseUploadFile) {
+
+        const json = {
+            userID: userID,
+            content: $(`#comment-content-input`).val().trim(),
+            imagePath: responseUploadFile.storepath,
+            imageOriginalName: responseUploadFile.originalName
+        };
+
+        let response = await $.ajax({
+            type: "POST",
+            url: "/add/comment",
+            data: JSON.stringify(json),
+            contentType: 'application/json; charset=utf-8'
+        });
+
+        console.log(response);
+
+        $(`#comment-content-input`).val("");
+
+        $('#comment-list').prepend(
+            getCommentDiv(response)
+        );
+
+        closeDialog(true);
+    }
+
+    async function addUser() {
+
+        const json = {
+            userName: $(`#user-name`).val().trim(),
+            email: $(`#user-email`).val().trim()
+        };
+
+        console.log(json);
+        let response = await $.ajax({
+            type: "POST",
+            url: "/add/user",
+            data: JSON.stringify(json),
+            contentType: 'application/json; charset=utf-8',
+        });
+
+        console.log(response);
+
+
+        $(`#user-name`).val("");
+        $(`#user-email`).val("");
+
+        $('#user-list').append(
+            getUserDiv(response)
+        );
+    }
+
+    let editValue = '';
+    let editImageValue = '';
+
+    function changeDivUpdateComment(button, id) {
+        editValue = $(`#comment-${id}-content`).html();
+        editImageValue = $(`#comment-${id}-image`).find(`div:nth-child(1)`).src;
+        console.log(editValue);
+        let inputFile = `<input id="edit-comment-image-value" type="file" value="${editImageValue}">`;
+        let input = `<input id="edit-comment-value" value="${editValue}">`;
+        $(`#comment-${id}-content`).html(input);
+        $(`#comment-${id}-image`).html(inputFile);
+        $(`#edit-comment-value`).focus();
+        $(button).text('확인');
+        $(button).next().text('취소')
+    }
+
+    let imagesrc;
+
+    function checkChangeImage(id) {
+        if ($(`#edit-comment-image-value`)[0].files[0] !== undefined) {
+            uploadfile(2, id);
+            console.log("이미지 선택 됨");
+        } else {
+            console.log("이미지 선택 안됨");
+            updateComment(null, id);
+        }
+    }
+
+    function onClickUpdateCommentButton(button, id) {
+        console.log(id);
+        if ($(button).text() === '수정') {
+            changeDivUpdateComment(button, id);
+        } else if ($(button).text() === '확인') {
+            checkChangeImage(id)
+        }
+    }
+
+    async function updateComment(responseUploadFile, id) {
+        console.log(id);
+
+        editValue = $('#edit-comment-value').val();
+
+        console.log(responseUploadFile);
+
+        const json = {
+            userID: userID,
+            content: editValue,
+            imagePath: responseUploadFile ? responseUploadFile.storepath : null,
+            imageOriginalName: responseUploadFile? responseUploadFile.originalName : null
+        };
+
+        try {
+            let response = await $.ajax({
+                type: "PUT",
+                url: `/update/comment/${id}`,
+                data: JSON.stringify(json),
+                contentType: 'application/json; charset=utf-8',
+            });
+
+            if (editValue !== $('#edit-comment-value').val()) {
+                ;
+            }
+
+            $(`#comment-${id}-content`).html(`${response.content}`);
+            $(`#comment-${id}-image`).html(`<img style="max-width: 100%; height: auto; max-height: 400px; justify-content: center;" src="http://localhost:8080/attachment/comment/${id}">`);
+            $(`#update-comment-${id}-button`).text('수정');
+            $(`#update-comment-${id}-button`).next().text('삭제');
+            editValue = null;
+        } catch (e) {
+            $(`#comment-${id}-content`).html(e);
+        }
+    }
+
+
+    let editNameValue = '';
+    let editEmailValue = '';
+
+    async function updateUser(button, id) {
+        let line = $(`#user-${id}`);
+        console.log(id);
+        if ($(button).text() === '수정') {
+            editNameValue = line.find(`div:nth-child(1)`).html();
+            editEmailValue = line.find(`div:nth-child(2)`).html();
+            let inputName = `<input id="edit-name-value" value="${editNameValue}">`;
+            let inputEmail = `<input id="edit-email-value" value="${editEmailValue}">`;
+            line.find('div:nth-child(1)').html(inputName);
+            line.find('div:nth-child(2)').html(inputEmail);
+
+            $(button).text('확인');
+            $(button).next().text('취소');
+        } else if ($(button).text() === '확인') {
+            editNameValue = $(`#edit-name-value`).val().trim();
+            editEmailValue = $(`#edit-email-value`).val().trim();
+
+            console.log(editNameValue + " " + editEmailValue);
+
+            const json = {
+                userName: editNameValue,
+                email: editEmailValue
+            };
+
+            console.log(json);
+
+            if (editEmailValue !== $('#edit-email-value').val() && editNameValue !== $('#edit-name-value').val()) {
+                ;
+            }
+
+            let response = await $.ajax({
+                type: "PUT",
+                url: `/update/user/${id}`,
+                data: JSON.stringify(json),
+                contentType: 'application/json; charset=utf-8',
+            });
+
+            console.log(line);
+
+            line.find('div:nth-child(1)').html(response.userName);
+            line.find('div:nth-child(2)').html(response.email);
+
+            $(button).text('수정');
+            $(button).next().text('삭제');
+            editNameValue = null;
+            editEmailValue = null;
+        }
+    }
+
+    async function deleteComment(button, id) {
+        let line = $(`#comment-${id}`);
+        if ($(button).text() === '삭제') {
+
+            let response = await $.ajax({
+                type: "DELETE",
+                url: `/delete/comment/${id}`,
+                contentType: 'application/json; charset=utf-8',
+            });
+
+            console.log(response);
+
+
+            line.remove();
+
+        } else if ($(button).text() === '취소') {
+            editValue = $('#edit-comment-value').val().trim();
+            if (editValue === null) return;
+
+            console.log(editValue);
+            $(button).prev().text('수정');
+            $(button).text('삭제');
+            $(`#comment-${id}-image`).html(`<img style="max-width: 100%; height: auto; max-height: 400px; justify-content: center;" src="http://localhost:8080/attachment/comment/${id}">`);
+            $(`#comment-${id}-content`).html(editValue);
+            console.log(editValue);
+            editValue = null;
+        }
+    }
+
+    async function deleteUser(button, id) {
+        let line = $(`#user-${id}`);
+        if ($(button).text() === '삭제') {
+
+            let response = await $.ajax({
+                type: "DELETE",
+                url: `/delete/user/${id}`,
+                contentType: 'application/json; charset=utf-8',
+            });
+
+            console.log(id);
+            console.log(response);
+            if (response)
+                line.remove();
+
+        } else if ($(button).text() === '취소') {
+            editNameValue = $('#edit-name-value').val().trim();
+            editEmailValue = $('#edit-email-value').val().trim();
+            if (editEmailValue === null && editNameValue === null) return;
+            $(button).prev().text('수정');
+            $(button).text('삭제');
+            $(`#user-${id}-name`).html(editNameValue);
+            $(`#user-${id}-email`).html(editValue);
+            console.log(editValue);
+            editValue = null;
+        }
+    }
+
+    function getCommentDiv(comment) {
+        return `<div id="comment-${comment.id}" style="border: 1px solid silver; width: 450px; padding: 20px 30px">
+                    <div id="comment-${comment.id}-image" ><img style="max-width: 100%; height: auto; max-height: 400px; justify-content: center;" src="http://localhost:8080/attachment/comment/${comment.id}"></div>
+                    <div style="display: flex">
+                        <div style="flex: .5">${comment.username}</div>
+                        <div style="flex: .5">${comment.created}</div>
+                    </div>
+                    <div id="comment-${comment.id}-content">${comment.content}</div>
+                    <div id="comment-${comment.id}-update-delete-button" style="display: flex;">
+                    </div>
+               </div>`;
+
+    }
+
+    function getCommentUpdateDeleteButton(comment) {
+        return `<button id="update-comment-${comment.id}-button" onclick="onClickUpdateCommentButton(this, ${comment.id})">수정</button>
+                <button id="delete-comment-${comment.id}-button" onclick="deleteComment(this,${comment.id})">삭제</button>`
+    }
+
+    function getUserDiv(user) {
+        return `<div id="user-${user.id}" style="display: flex; border-bottom: 1px solid silver; margin-top: 20px">
+                        <div id="user-${user.id}-name" style="width: 150px;">${user.userName}</div>
+                        <div id="user-${user.id}-email" style="width: 350px; overflow: auto">${user.email}</div>
+                        <button id="update-user-button" onclick="updateUser(this,${user.id})">수정</button>
+                        <button id="delete-user-button" onclick="deleteUser(this,${user.id})">삭제</button>
+                        <input type="file" id="upload-file-${user.id}">
+                        <button onclick="uploadfile(0,0)">프로필업로드</button>
+                    </div>`
+    }
+
+    fetchCommentList();
+    getUserList();
+
+</script>
+</body>
+</html>
